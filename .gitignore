@@ -1,0 +1,80 @@
+# Dependencies
+/node_modules
+
+# Build output
+/dist
+
+# System files
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Logs
+/logs
+*.log
+
+# Testing
+/coverage
+
+# IDE
+.vscode
+.idea
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.manifest
+*.spec
+*.sqlite3
+*.db
+*.pkl
+*.h5
+*.csv
+*.tsv
+*.parquet
+*.ipynb_checkpoints
+
+# Virtual environments
+venv/
+env/
+.trading_env/
+trading_env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Windows
+*.exe
+*.dll
+*.bat
+*.ps1
+
+# Logs
+logs/
+*.log
+
+# Data
+*.dat
+data/
+
+# Notebooks
+*.ipynb
+
+# Other
+*.tmp
+*.swp
+*.bak
+
+# Ignore secrets/configs
+config.json
