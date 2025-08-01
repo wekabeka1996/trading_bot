@@ -1,0 +1,114 @@
+{
+  // --- ЗАГАЛЬНА ІНФОРМАЦІЯ ПРО ПЛАН ---
+  "plan_date": "YYYY-MM-DD", // Поточна дата
+  "plan_version": "1.0",
+  "plan_type": "Назва вашої стратегії (напр., multi_asset_breakout)",
+  "plan_author": "Ваше ім'я або назва LLM-ансамблю",
+  
+  // --- ГЛОБАЛЬНИЙ РИЗИК-МЕНЕДЖМЕНТ ---
+  "risk_budget": 0.01,          // Ризик на одну угоду у % від капіталу (напр., 0.01 = 1%)
+  "global_settings": {
+    "max_portfolio_risk": 0.02,   // Максимальний сукупний ризик на день (напр., 0.02 = 2%)
+    "emergency_stop_loss": -0.08, // Аварійне закриття всього при просадці капіталу на X%
+    "daily_profit_target": 0.05,  // Цільовий прибуток на день
+    "max_concurrent_positions": 3 // Максимальна кількість одночасно відкритих позицій
+  },
+
+  // --- АКТИВИ ТА СТРАТЕГІЇ ДЛЯ ТОРГІВЛІ ---
+  // Це масив, сюди можна додавати декілька об'єктів для різних монет
+  "active_assets": [
+    {
+      "symbol": "SYMBOL_USDT", // Торгова пара, напр., "BTCUSDT"
+      "asset_type": "futures",
+      "leverage": 5,
+      "strategy": "Назва стратегії для цього активу",
+      "position_size_pct": 0.0, // Заповнюється ботом, можна залишити 0.0
+      
+      // --- УМОВНІ ОРДЕРИ НА ВХІД (OCO - One-Cancels-the-Other) ---
+      "order_groups": {
+        "bullish": { // Сценарій для лонгу
+          "order_type": "BUY_STOP_LIMIT",
+          "trigger_price": 0.0, // Ціна, при якій активується ордер
+          "limit_price": 0.0,   // Лімітна ціна, щоб уникнути прослизання
+          "stop_loss": 0.0,
+          "take_profit": [0.0, 0.0], // Можна вказати кілька рівнів TP
+          "time_valid_from": "YYYY-MM-DDTHH:MM:SS+03:00", // Час, з якого ордер активний
+          "time_valid_to":   "YYYY-MM-DDTHH:MM:SS+03:00"  // Час, після якого ордер скасовується
+        },
+        "bearish": { // Сценарій для шорту
+          "order_type": "SELL_STOP_LIMIT",
+          "trigger_price": 0.0,
+          "limit_price": 0.0,
+          "stop_loss": 0.0,
+          "take_profit": [0.0, 0.0],
+          "time_valid_from": "YYYY-MM-DDTHH:MM:SS+03:00",
+          "time_valid_to":   "YYYY-MM-DDTHH:MM:SS+03:00"
+        }
+      },
+
+      // --- ДИНАМІЧНЕ УПРАВЛІННЯ ПОЗИЦІЄЮ (опціонально) ---
+      "dynamic_management": {
+        "trailing_sl_atr_multiple": 1.5, // Множник ATR для трейлінг-стопу
+        "atr_window_min": 15,            // Таймфрейм для розрахунку ATR в хвилинах
+        "activate_after_profit": 0.01    // Активувати трейлінг після досягнення прибутку в X% (0.01 = 1%)
+      },
+
+      // --- ХЕДЖУВАННЯ (опціонально) ---
+      "hedge": {
+        "symbol": "ETHUSDT",             // Актив для хеджування
+        "direction": "short",            // Напрямок хеджу (short/long)
+        "size_pct_of_position": 0.25,    // Розмір хеджу у % від основної позиції
+        "delta": 0.25                    // Теоретичне значення (для інформації)
+      },
+
+      // --- ПРАВИЛА МОНІТОРИНГУ В РЕАЛЬНОМУ ЧАСІ (опціонально) ---
+      "monitoring_rules": {
+        "funding_rate_pct": {
+          "threshold": 0.02, // Поріг для ставки фінансування
+          "action": "take_profit_50_and_move_sl_to_be" // Дія, яку виконає бот
+        },
+        "open_interest_pct": {
+          "threshold": 8,    // Поріг зміни відкритого інтересу у %
+          "window_min": 60,  // За який період часу (в хвилинах)
+          "action": "raise_attention"
+        }
+      }
+    }
+  ],
+
+  // --- ТОРГОВІ ФАЗИ (дії за розкладом) ---
+  "trade_phases": {
+    "setup_orders": {
+      "time": "12:00", // Час у форматі HH:MM (EEST)
+      "action": "place_all_orders",
+      "description": "Виставлення всіх умовних ордерів на вхід"
+    },
+    "cancel_unfilled": {
+      "time": "22:00",
+      "action": "cancel_all_untriggered",
+      "description": "Скасування всіх невиконаних ордерів наприкінці дня"
+    },
+    "end_of_day_checklist": {
+      "time": "23:55",
+      "action": "end_of_day_checklist",
+      "description": "Виконання денного чек-листа та запис у журнал"
+    }
+  },
+
+  // --- ГЛОБАЛЬНІ РИЗИКОВІ ТРИГЕРИ ---
+  "risk_triggers": {
+    "btc_eth_flash_drop": {
+      "threshold_pct": 3.0, // Поріг падіння ціни у %
+      "assets": ["BTCUSDT", "ETHUSDT"],
+      "action": "close_longs_keep_hedge" // Дія при спрацюванні
+    }
+  },
+
+  // --- ЧЕК-ЛИСТ НА КІНЕЦЬ ДНЯ (для інформації) ---
+  "end_of_day_checklist": [
+    "position_closed_or_sl_in_profit",
+    "log_journal_roi_pf_drawdown",
+    "archive_screens_volume_oi",
+    "update_equity_and_risk_budget"
+  ]
+}

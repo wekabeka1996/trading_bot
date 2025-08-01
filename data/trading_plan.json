@@ -1,0 +1,103 @@
+{
+  "plan_date": "2025-08-01",
+  "plan_version": "1.1_test_full",
+  "plan_type": "single_asset_conditional_oco",
+  "plan_author": "Manual BTC breakout plan",
+  "risk_budget": 0.0075,
+  "global_settings": {
+    "max_portfolio_risk": 0.75,
+    "emergency_stop_loss": -3.0,
+    "daily_profit_target": 2.0,
+    "max_concurrent_positions": 1
+  },
+  "active_assets": [
+    {
+      "symbol": "BTCUSDT",
+      "asset_type": "futures",
+      "leverage": 3,
+      "strategy": "oco_breakout",
+      "position_size_pct": 0.34,
+      "order_groups": {
+        "bullish": {
+          "order_type": "BUY_STOP_LIMIT",
+          "trigger_price": 116100,
+          "limit_price": 116150,
+          "stop_loss": 115500,
+          "take_profit": [116600, 117000],
+          "time_valid_from": "2025-08-01T16:30:00+03:00",
+          "time_valid_to": "2025-08-01T18:00:00+03:00"
+        },
+        "bearish": {
+          "order_type": "SELL_STOP_LIMIT",
+          "trigger_price": 115500,
+          "limit_price": 115450,
+          "stop_loss": 116100,
+          "take_profit": [115000, 114500],
+          "time_valid_from": "2025-08-01T16:30:00+03:00",
+          "time_valid_to": "2025-08-01T18:00:00+03:00"
+        }
+      },
+      "dynamic_management": {
+        "trailing_sl_atr_multiple": 1.0,
+        "atr_window_min": 15,
+        "activate_after_profit": 0.015
+      },
+      "hedge": {
+        "symbol": "ETHUSDT",
+        "direction": "short",
+        "size_pct_of_position": 0.25,
+        "delta": 0.25
+      },
+      "monitoring_rules": {
+        "funding_rate_pct": {
+          "threshold": 0.02,
+          "action": "take_profit_50_and_move_sl_to_be"
+        },
+        "open_interest_pct": {
+          "threshold": 8,
+          "window_min": 60,
+          "action": "raise_attention"
+        },
+        "btc_dominance_pct": {
+          "threshold": 57.0,
+          "action": "close_long_consider_short"
+        },
+        "cme_gap_114k": {
+          "threshold_points": 500,
+          "action": "close_positions_strict_sl"
+        }
+      }
+    }
+  ],
+  "trade_phases": {
+    "setup_orders": {
+      "start_time": "16:30",
+      "end_time":   "16:35",
+      "action": "place_all_orders", 
+      "description": "place both OCO groups"
+    },
+    "cancel_unfilled": {
+      "time": "18:00",
+      "action": "cancel_all_untriggered",
+      "description": "Скасування всіх невиконаних ордерів наприкінці дня"
+    }
+  },
+  
+  "risk_triggers": {
+    "btc_flash_drop": {
+      "threshold_pct": 5.0,
+      "assets": ["BTCUSDT"],
+      "action": "close_longs_keep_hedge"
+    },
+    "regulatory_news": {
+      "keyword": ["ETF", "CME", "SEC", "Fed"],
+      "action": "close_positions_strict_sl"
+    }
+  },
+  "end_of_day_checklist": [
+    "position_closed_or_sl_in_profit",
+    "log_journal_roi_pf_drawdown",
+    "archive_screens_volume_oi",
+    "update_equity_and_risk_budget"
+  ]
+}

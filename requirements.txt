@@ -1,0 +1,12 @@
+# Список необхідних бібліотек для встановлення через pip
+# Команда для встановлення: pip install -r requirements.txt
+
+python-binance
+python-dotenv
+pydantic
+pytz
+pandas
+pandas-ta
+python-telegram-bot
+pytest
+numpy==1.26.4 # <-- Додано для вирішення конфлікту залежностей
