@@ -260,3 +260,23 @@ class BinanceFuturesConnector:
                 "Не вдалося отримати інформацію про позиції: %s", e
             )
             return []
+
+    @_retry_on_api_error()
+    def get_free_margin(self) -> float | None:
+        """Отримує доступну вільну маржу."""
+        try:
+            account_info = self.client.futures_account()
+            return float(account_info.get('availableBalance', 0))
+        except BinanceAPIException as e:
+            logging.error("Не вдалося отримати вільну маржу: %s", e)
+            return None
+
+    @_retry_on_api_error()
+    def get_total_balance(self) -> float | None:
+        """Отримує загальний баланс рахунку."""
+        try:
+            account_info = self.client.futures_account()
+            return float(account_info.get('totalWalletBalance', 0))
+        except BinanceAPIException as e:
+            logging.error("Не вдалося отримати загальний баланс: %s", e)
+            return None

@@ -605,7 +605,7 @@ class Engine:
         )
         if self.risk_manager:
             # pylint: disable=protected-access
-            self.risk_manager._close_all_long_positions(keep_hedge=False)
+            self.risk_manager._close_all_positions(keep_hedge=False)
 
     def _handle_end_of_day_checklist(self):
         """Викликає виконання денного чек-листа."""
@@ -920,3 +920,15 @@ class Engine:
                             self.risk_manager.execute_risk_action(
                                 trigger_details.action
                             )
+
+    def _pause_trading(self):
+        """
+        Ставить торгівлю на паузу після спрацювання kill-switch.
+        """
+        self.logger.critical("TRADING PAUSED - Kill-switch активований")
+        self.notifier.send_message(
+            "🛑 TRADING PAUSED\nKill-switch активований через досягнення emergency stop loss.",
+            level="critical"
+        )
+        # В реальному застосуванні тут можна зупинити основний цикл
+        # або встановити прапор для призупинення торгівлі
