@@ -22,6 +22,19 @@ from trading_bot.utils import calculate_atr
 
 
 class Engine:
+    def _should_place_new_orders(self) -> bool:
+        """
+        Free-Margin Guard: перевіряє, чи можна розміщати нові ордери.
+        """
+        free_margin = self.exchange.get_free_margin()
+        total_balance = self.exchange.get_total_balance()
+        if free_margin is None or total_balance is None or total_balance == 0:
+            self.logger.warning("Не вдалося отримати дані для free-margin guard.")
+            return False
+        if free_margin / total_balance < 0.20:
+            self.logger.warning("Free margin <20 % — new orders paused")
+            return False
+        return True
     """
     Клас Execution Engine. Відповідає за виконання торгового плану,
     управління ордерами та позиціями.
@@ -228,6 +241,95 @@ class Engine:
         if not self.risk_manager:
             return
 
+        # Free-Margin Guard
+        if not self._should_place_new_orders():
+            self.logger.warning(f"Free-Margin Guard: ордери для {asset.symbol} не будуть розміщені.")
+            return
+        # Встановлюємо плече перед розміщенням ордерів
+        try:
+            self.exchange.client.futures_change_leverage(
+                symbol=asset.symbol, leverage=asset.leverage
+            )
+            self.logger.info(
+                "Плече успішно встановлено: %s x%s",
+                asset.symbol, asset.leverage
+            )
+        except (BinanceAPIException, BinanceRequestException) as e:
+            self.logger.error(
+                "Не вдалося встановити плече для %s: %s",
+                asset.symbol, e
+            )
+            return
+
+        # Перевірка та адаптація цін до поточних ринкових умов
+        current_price = self.exchange.get_current_price(asset.symbol)
+        if not current_price:
+            self.logger.error(
+                "Не вдалося отримати поточну ціну для %s", asset.symbol
+            )
+            return
+
+        self.logger.info(
+            "Поточна ціна %s: $%.2f", asset.symbol, current_price
+        )
+
+        # Адаптуємо ціни OCO ордерів до ринкових умов
+        original_bullish_trigger = bullish_group.trigger_price
+        original_bearish_trigger = bearish_group.trigger_price
+
+        # Для BUY STOP: має бути вище поточної ціни
+        if current_price >= bullish_group.trigger_price:
+            new_trigger = current_price + 100
+            bullish_group.trigger_price = new_trigger
+            if bullish_group.limit_price:
+                bullish_group.limit_price = new_trigger + 50
+            self.logger.warning(
+                "BUY STOP адаптовано: %s -> %s (поточна ціна: %s)",
+                original_bullish_trigger, new_trigger, current_price
+            )
+            self.notifier.send_message(
+                f"⚠️ BUY STOP адаптовано для {asset.symbol}\n"
+                f"Було: {original_bullish_trigger}\n"
+                f"Стало: {new_trigger}\n"
+                f"Поточна ціна: {current_price}",
+                level="warning"
+            )
+
+        # Для SELL STOP: має бути нижче поточної ціни
+        if current_price <= bearish_group.trigger_price:
+            new_trigger = current_price - 100
+            bearish_group.trigger_price = new_trigger
+            if bearish_group.limit_price:
+                bearish_group.limit_price = new_trigger - 50
+            self.logger.warning(
+                "SELL STOP адаптовано: %s -> %s (поточна ціна: %s)",
+                original_bearish_trigger, new_trigger, current_price
+            )
+            self.notifier.send_message(
+                f"⚠️ SELL STOP адаптовано для {asset.symbol}\n"
+                f"Було: {original_bearish_trigger}\n"
+                f"Стало: {new_trigger}\n"
+                f"Поточна ціна: {current_price}",
+                level="warning"
+            )
+
+        # Адаптуємо стоп-лоси відповідно до нових цін входу
+        if bullish_group.trigger_price != original_bullish_trigger:
+            # Зберігаємо відстань стоп-лосу (650 пунктів в оригіналі)
+            sl_distance = original_bullish_trigger - bullish_group.stop_loss
+            bullish_group.stop_loss = bullish_group.trigger_price - sl_distance
+            self.logger.info(
+                "Оновлено SL для BUY: %s", bullish_group.stop_loss
+            )
+
+        if bearish_group.trigger_price != original_bearish_trigger:
+            # Зберігаємо відстань стоп-лосу (600 пунктів в оригіналі)
+            sl_distance = bearish_group.stop_loss - original_bearish_trigger
+            bearish_group.stop_loss = bearish_group.trigger_price + sl_distance
+            self.logger.info(
+                "Оновлено SL для SELL: %s", bearish_group.stop_loss
+            )
+
         # Розраховуємо розмір для обох напрямків
         buy_quantity = self.risk_manager.calculate_position_size(
             asset, bullish_group
@@ -252,14 +354,34 @@ class Engine:
             if bullish_group.limit_price is not None:
                 buy_params["price"] = bullish_group.limit_price
 
-        buy_order = self.exchange.place_order(
-            symbol=asset.symbol, side="BUY", order_type=buy_order_type,
-            quantity=buy_quantity, **buy_params
-        )
+        buy_order = None
+        for attempt in range(3):
+            try:
+                buy_order = self.exchange.place_order(
+                    symbol=asset.symbol, side="BUY",
+                    order_type=buy_order_type,
+                    quantity=buy_quantity, **buy_params
+                )
+                if buy_order:
+                    self.logger.info(
+                        "Успішно розміщено BUY STOP для OCO: %s", buy_order
+                    )
+                    break
+            except (BinanceAPIException, BinanceRequestException) as e:
+                self.logger.error(
+                    "Спроба %d: Помилка розміщення BUY STOP для OCO %s: %s",
+                    attempt + 1, asset.symbol, e
+                )
+                time.sleep(1)
+
         if not buy_order:
-            self.logger.error(
-                "Не вдалося розмістити BUY STOP для OCO пари %s",
-                asset.symbol
+            self.logger.critical(
+                "Не вдалося розмістити BUY STOP для OCO пари %s після "
+                "декількох спроб.", asset.symbol
+            )
+            self.notifier.send_message(
+                f"Критична помилка: не вдалося розмістити BUY STOP для "
+                f"{asset.symbol}", level="critical"
             )
             return
 
@@ -270,10 +392,26 @@ class Engine:
             if bearish_group.limit_price is not None:
                 sell_params["price"] = bearish_group.limit_price
 
-        sell_order = self.exchange.place_order(
-            symbol=asset.symbol, side="SELL", order_type=sell_order_type,
-            quantity=sell_quantity, **sell_params
-        )
+        sell_order = None
+        for attempt in range(3):
+            try:
+                sell_order = self.exchange.place_order(
+                    symbol=asset.symbol, side="SELL",
+                    order_type=sell_order_type,
+                    quantity=sell_quantity, **sell_params
+                )
+                if sell_order:
+                    self.logger.info(
+                        "Успішно розміщено SELL STOP для OCO: %s", sell_order
+                    )
+                    break
+            except (BinanceAPIException, BinanceRequestException) as e:
+                self.logger.error(
+                    "Спроба %d: Помилка розміщення SELL STOP для OCO %s: %s",
+                    attempt + 1, asset.symbol, e
+                )
+                time.sleep(1)
+
         if not sell_order:
             self.logger.error(
                 "Не вдалося розмістити SELL STOP для OCO пари %s. "
@@ -379,7 +517,8 @@ class Engine:
                 )
                 self.notifier.send_message(
                     f"Відкрито нову позицію: {symbol}\n"
-                    f"Ціна входу: {position_data['entryPrice']}",
+                    f"Ціна входу: {position_data['entryPrice']}\n"
+                    f"Розмір: {position_data['positionAmt']}",
                     level="trade"
                 )
                 self.managed_positions[symbol] = {
@@ -394,14 +533,26 @@ class Engine:
                    not self.managed_positions[symbol].get('hedge_info'):
                     try:
                         self.logger.info(
-                            "Відкриваю хеджувальну позицію для %s", symbol
+                            "Відкриваю хеджувальну позицію для %s: %s",
+                            symbol, asset_plan.hedge.symbol
                         )
-                        self.risk_manager.open_hedge_position(
+                        hedge_result = self.risk_manager.open_hedge_position(
                             position_data, asset_plan.hedge
                         )
-                        self.managed_positions[symbol]['hedge_info'] = {
-                            'symbol': asset_plan.hedge.symbol, 'active': True
-                        }
+                        if hedge_result:
+                            self.logger.info(
+                                "Хеджувальна позиція %s успішно відкрита.",
+                                asset_plan.hedge.symbol
+                            )
+                            self.managed_positions[symbol]['hedge_info'] = {
+                                'symbol': asset_plan.hedge.symbol,
+                                'active': True
+                            }
+                        else:
+                            self.logger.error(
+                                "Не вдалося відкрити хеджувальну позицію %s.",
+                                asset_plan.hedge.symbol
+                            )
                     except (
                         ValueError, BinanceAPIException,
                         BinanceRequestException
@@ -426,9 +577,15 @@ class Engine:
                 hedge_symbol = managed_info['hedge_info']['symbol']
                 try:
                     self.logger.info(
-                        "Закриваю хеджувальну позицію %s", hedge_symbol
+                        "Закриваю хеджувальну позицію %s, оскільки "
+                        "основна позиція %s закрита.",
+                        hedge_symbol, symbol
                     )
                     self.risk_manager.close_hedge_position(hedge_symbol)
+                    self.logger.info(
+                        "Хеджувальна позиція %s успішно закрита.",
+                        hedge_symbol
+                    )
                 except (
                     ValueError, BinanceAPIException, BinanceRequestException
                 ) as e:
@@ -556,7 +713,24 @@ class Engine:
         order_group = asset_plan.order_groups.get(order_group_name)
         if not order_group:
             return
-        sl_price = order_group.stop_loss
+        # Free-Margin Guard
+        if not self._should_place_new_orders():
+            self.logger.warning(f"Free-Margin Guard: SL/TP для {symbol} не буде розміщено.")
+            return
+        # Динамічний SL через ATR
+        interval = "1h"
+        klines = self.exchange.get_historical_klines(symbol, interval)
+        atr = None
+        if klines:
+            atr = calculate_atr(klines, length=14)
+        if atr and atr > 0:
+            sl_distance = atr * 1.5
+            entry = float(position['entryPrice'])
+            sl_price = entry - sl_distance if side_to_close == "SELL" else entry + sl_distance
+            self.logger.info(f"Динамічний SL для {symbol}: ATR={atr:.2f}, SL={sl_price:.2f}")
+        else:
+            sl_price = order_group.stop_loss
+            self.logger.info(f"Статичний SL для {symbol}: SL={sl_price}")
         if sl_price is None:
             self.logger.error(
                 "Ціна Stop Loss не визначена для %s в групі %s",
@@ -564,11 +738,28 @@ class Engine:
             )
             return
 
-        sl_order = self.exchange.place_order(
-            symbol=symbol, side=side_to_close, order_type="STOP_MARKET",
-            quantity=abs(position_amount), stopPrice=sl_price,
-            reduceOnly=True
-        )
+        sl_order = None
+        for attempt in range(3):
+            try:
+                sl_order = self.exchange.place_order(
+                    symbol=symbol, side=side_to_close,
+                    order_type="STOP_MARKET",
+                    quantity=abs(position_amount), stopPrice=sl_price,
+                    reduceOnly=True
+                )
+                if sl_order:
+                    self.logger.info(
+                        "Успішно розміщено початковий SL для %s: %s",
+                        symbol, sl_order
+                    )
+                    break
+            except (BinanceAPIException, BinanceRequestException) as e:
+                self.logger.error(
+                    "Спроба %d: Помилка розміщення SL для %s: %s",
+                    attempt + 1, symbol, e
+                )
+                time.sleep(1)
+
         if sl_order and symbol in self.managed_positions:
             self.managed_positions[symbol]['trailing_stop_order_id'] = \
                 sl_order['orderId']
@@ -598,9 +789,21 @@ class Engine:
             return
         interval = f"{dm_config.atr_window_min}m"
         klines = self.exchange.get_historical_klines(symbol, interval)
-        atr_value = calculate_atr(klines, length=14)
-        if not atr_value:
+        if not klines:
+            self.logger.warning(
+                "Не вдалося отримати klines для розрахунку ATR для %s.",
+                symbol
+            )
             return
+
+        atr_value = calculate_atr(klines, length=14)
+        if not atr_value or atr_value <= 0:
+            self.logger.warning(
+                "Некоректне значення ATR (%s) для %s. "
+                "Оновлення SL пропущено.", atr_value, symbol
+            )
+            return
+
         new_sl_price = (
             current_price - (atr_value * dm_config.trailing_sl_atr_multiple)
             if is_long else
@@ -631,13 +834,28 @@ class Engine:
                 symbol, current_sl_price, new_sl_price
             )
             side_to_close = "SELL" if is_long else "BUY"
-            new_order = self.exchange.cancel_and_replace_order(
-                symbol=symbol, cancel_order_id=sl_order_id,
-                side=side_to_close, order_type="STOP_MARKET",
-                quantity=abs(position_amount),
-                stopPrice=round(new_sl_price, 4),
-                reduceOnly=True
-            )
+            new_order = None
+            for attempt in range(3):
+                try:
+                    new_order = self.exchange.cancel_and_replace_order(
+                        symbol=symbol, cancel_order_id=sl_order_id,
+                        side=side_to_close, order_type="STOP_MARKET",
+                        quantity=abs(position_amount),
+                        stopPrice=round(new_sl_price, 4),
+                        reduceOnly=True
+                    )
+                    if new_order:
+                        self.logger.info(
+                            "Успішно оновлено SL для %s: %s", symbol, new_order
+                        )
+                        break
+                except (BinanceAPIException, BinanceRequestException) as e:
+                    self.logger.error(
+                        "Спроба %d: Помилка оновлення SL для %s: %s",
+                        attempt + 1, symbol, e
+                    )
+                    time.sleep(1)
+
             if new_order:
                 self.managed_positions[symbol]['trailing_stop_order_id'] = \
                     new_order['orderId']
@@ -660,9 +878,22 @@ class Engine:
         self.logger.warning("Спроба виконати невідому дію з торгового плану.")
 
     def _check_global_risks(self, _: datetime):
-        """Перевіряє глобальні ризики, такі як раптові падіння цін."""
+        """
+        Kill-switch: якщо денний PnL ≤ emergency_stop_loss, закрити всі позиції та поставити паузу.
+        Flash-drop: стара логіка.
+        """
         if not self.plan or not self.risk_manager:
             return
+        # Kill-switch
+        emergency_sl = self.plan.global_settings.emergency_stop_loss
+        today = self.plan.plan_date
+        daily_pnl = self.journal.get_daily_pnl(today)
+        if daily_pnl is not None and daily_pnl <= emergency_sl:
+            self.logger.critical(f"Kill-switch: денний PnL {daily_pnl:.2%} ≤ {emergency_sl:.2%}. Trading paused.")
+            self.risk_manager._close_all_positions(reason="Kill-switch −8 %")
+            self._pause_trading()
+            return
+        # Flash-drop
         for trigger_name, trigger_details in self.plan.risk_triggers.items():
             if trigger_name == "btc_flash_drop":
                 assets_to_check = trigger_details.assets or []
@@ -675,6 +906,11 @@ class Engine:
                     if last_price:
                         price_drop_pct = (
                             (last_price - current_price) / last_price * 100
+                        )
+                        self.logger.debug(
+                            "Перевірка Flash Drop для %s: Поточна ціна: %s, "
+                            "Попередня: %s, Падіння: %.4f%%",
+                            symbol, current_price, last_price, price_drop_pct
                         )
                         if price_drop_pct >= trigger_details.threshold_pct:
                             self.logger.warning(

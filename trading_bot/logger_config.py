@@ -50,3 +50,16 @@ def setup_logger() -> None:
     logging.info("Логер успішно налаштовано. Нова сесія бота.")
     logging.info("=" * 50)
 
+    # Handler для API-помилок
+    api_error_handler = logging.FileHandler(
+        "logs/api_errors.log",
+        mode="a",
+        encoding="utf-8"
+    )
+    api_error_handler.setLevel(logging.ERROR)
+    api_error_handler.setFormatter(logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    ))
+    api_logger = logging.getLogger("trading_bot.exchange_connector")
+    api_logger.addHandler(api_error_handler)
+
