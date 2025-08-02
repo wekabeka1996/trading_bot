@@ -22,6 +22,8 @@ class GlobalSettings(BaseModel):
     emergency_stop_loss: float
     daily_profit_target: float
     max_concurrent_positions: int
+    max_notional_per_trade: float = 25.0
+    margin_limit_pct: float = 0.40
 
 
 class OrderGroup(BaseModel):
@@ -46,7 +48,7 @@ class Hedge(BaseModel):
     """Параметри хеджування позиції."""
     symbol: str
     direction: str
-    size_pct_of_position: float
+    size_pct: float
     delta: float
 
 

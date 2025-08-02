@@ -10,3 +10,4 @@ pandas-ta
 python-telegram-bot
 pytest
 numpy==1.26.4 # <-- Додано для вирішення конфлікту залежностей
+tenacity # <-- Додано для retry логіки в exchange_connector
