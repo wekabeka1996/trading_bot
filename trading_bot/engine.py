@@ -1234,6 +1234,7 @@ class Engine:
                                 "!!! FLASH DROP DETECTED для %s: %.2f%% !!!",
                                 symbol, price_drop_pct
                             )
+<<<<<<< HEAD
                             if self.risk_manager:
                                 self.risk_manager.execute_risk_action(
                                     trigger_details.action
@@ -1335,3 +1336,20 @@ class Engine:
                 
         except Exception as e:
             self.logger.error(f"Помилка при скасуванні ордерів: {e}")
+=======
+                            self.risk_manager.execute_risk_action(
+                                trigger_details.action
+                            )
+
+    def _pause_trading(self):
+        """
+        Ставить торгівлю на паузу після спрацювання kill-switch.
+        """
+        self.logger.critical("TRADING PAUSED - Kill-switch активований")
+        self.notifier.send_message(
+            "🛑 TRADING PAUSED\nKill-switch активований через досягнення emergency stop loss.",
+            level="critical"
+        )
+        # В реальному застосуванні тут можна зупинити основний цикл
+        # або встановити прапор для призупинення торгівлі
+>>>>>>> 65948086fbea892641168ee4b73f2970125d12cb

@@ -522,6 +522,7 @@ class BinanceFuturesConnector:
             )
             return []
 
+<<<<<<< HEAD
     def place_market_order(self, symbol: str, side: str, quantity: float):
         """Розміщує ринковий ордер для закриття позиції."""
         try:
@@ -542,4 +543,24 @@ class BinanceFuturesConnector:
                 "Помилка розміщення ринкового ордера %s: %s", 
                 symbol, e
             )
+=======
+    @_retry_on_api_error()
+    def get_free_margin(self) -> float | None:
+        """Отримує доступну вільну маржу."""
+        try:
+            account_info = self.client.futures_account()
+            return float(account_info.get('availableBalance', 0))
+        except BinanceAPIException as e:
+            logging.error("Не вдалося отримати вільну маржу: %s", e)
+            return None
+
+    @_retry_on_api_error()
+    def get_total_balance(self) -> float | None:
+        """Отримує загальний баланс рахунку."""
+        try:
+            account_info = self.client.futures_account()
+            return float(account_info.get('totalWalletBalance', 0))
+        except BinanceAPIException as e:
+            logging.error("Не вдалося отримати загальний баланс: %s", e)
+>>>>>>> 65948086fbea892641168ee4b73f2970125d12cb
             return None

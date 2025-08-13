@@ -43,6 +43,9 @@ def mock_exchange_connector():
         'PRICE_FILTER': {'minPrice': '0.0001', 'tickSize': '0.0001'}
     }
     connector.get_exchange_filters.return_value = mock_filters
+    
+    # Мок для позицій (порожній список = немає відкритих позицій)
+    connector.get_position_information.return_value = []
 
     yield connector
 
@@ -57,7 +60,9 @@ def sample_trading_plan() -> TradingPlan:
             "max_portfolio_risk": 2.0,
             "emergency_stop_loss": -8.0,
             "daily_profit_target": 5.0,
-            "max_concurrent_positions": 1
+            "max_concurrent_positions": 1,
+            "max_notional_per_trade": 25.0,
+            "margin_limit_pct": 0.40
         },
         "active_assets": [],
         "trade_phases": {},
@@ -106,12 +111,15 @@ class TestRiskManager:
         )
 
         # Assert
+        # З новою логікою розрахунку ризику:
         # Капітал = $10,000, Ризик = 1% ($100), Відстань до стопу = 0.022
-        # Розмір = 100 / 0.022 = 4545.45...
-        # але double margin (OCO) -> qty обмежено до 4000.0
-        expected_size = 4000.0
+        # Qty за ризиком = 100 / 0.022 = ~4545
+        # Qty за номіналом = 25 / 1.145 = ~21.8
+        # Qty за маржею = дуже велика
+        # Мінімум з трьох = 21.8 (обмежений номіналом)
+        expected_size = 21.8
         assert calculated_size is not None
-        assert calculated_size == pytest.approx(expected_size)
+        assert calculated_size == pytest.approx(expected_size, rel=1e-2)
         risk_manager.exchange.get_futures_account_balance.assert_called_once()
         risk_manager.exchange.get_exchange_filters.assert_called_once_with(
             "LDOUSDT"
