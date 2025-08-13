@@ -1,0 +1,38 @@
+[
+  {
+    "id": "F001",
+    "file": "trading_bot/engine.py",
+    "line": 1126,
+    "severity": "CRITICAL",
+    "category": "Risk/TradingLogic",
+    "summary": "Kill-switch порівнював відсотки з USD, що некоректно",
+    "fix_brief": "Поріг у USD (equity * emergency_stop_loss) порівнювати з денним PnL у USD"
+  },
+  {
+    "id": "F002",
+    "file": "trading_bot/engine.py",
+    "line": 207,
+    "severity": "HIGH",
+    "category": "Schedule",
+    "summary": "Відсутнє глобальне EEST-вікно для нових входів",
+    "fix_brief": "Додати _is_within_entry_hours_eest та перевірку в _handle_place_all_orders"
+  },
+  {
+    "id": "F003",
+    "file": "trading_bot/engine.py",
+    "line": 1153,
+    "severity": "HIGH",
+    "category": "Schedule",
+    "summary": "Відсутній time-stop після 23:00 EEST",
+    "fix_brief": "Закривати всі позиції одноразово після 23:00 EEST"
+  },
+  {
+    "id": "F004",
+    "file": "trading_bot/risk_manager.py",
+    "line": 1,
+    "severity": "HIGH",
+    "category": "Risk/Math",
+    "summary": "used_margin обчислювався без захисту від None/не-list",
+    "fix_brief": "Сумувати з try/except; якщо positions не список/None — used_margin = 0.0"
+  }
+]

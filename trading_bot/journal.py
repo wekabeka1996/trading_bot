@@ -9,6 +9,25 @@ import pytz
 
 
 class TradingJournal:
+    def get_daily_pnl(self, date: str) -> float:
+        """
+        Повертає загальний PnL за день (для kill-switch).
+        :param date: Дата у форматі YYYY-MM-DD
+        :return: Сума PnL за день
+        """
+        try:
+            with open(self.file_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                total_pnl = 0.0
+                for row in reader:
+                    if row.get('timestamp_utc', '').startswith(date):
+                        try:
+                            total_pnl += float(row['pnl_usdt'])
+                        except (ValueError, KeyError):
+                            continue
+                return total_pnl
+        except Exception:
+            return None
     """
     Клас для запису торгових операцій та виконання денного чек-листа.
     """
@@ -145,3 +164,17 @@ class TradingJournal:
             "розрахунку ризиків."
         )
         self.logger.info("Чек-лист на кінець дня завершено.")
+
+    def get_daily_pnl(self, date: str) -> float | None:
+        """
+        Отримує загальний PnL за конкретний день.
+        
+        :param date: Дата у форматі YYYY-MM-DD
+        :return: Загальний PnL за день або None у разі помилки
+        """
+        try:
+            summary = self.get_daily_summary(date)
+            return summary.get('total_pnl', 0.0)
+        except Exception as e:
+            self.logger.error("Помилка при отриманні денного PnL: %s", e)
+            return None
