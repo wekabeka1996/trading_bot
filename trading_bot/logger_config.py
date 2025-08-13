@@ -4,6 +4,41 @@
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from trading_bot.telegram_bot import TradingTelegramBot
+
+
+class TelegramLogHandler(logging.Handler):
+    """
+    Обробник логів, що надсилає повідомлення в Telegram.
+    """
+    def __init__(self, telegram_bot: "TradingTelegramBot"):
+        super().__init__()
+        self.telegram_bot = telegram_bot
+        self.setLevel(logging.INFO)  # Відправляємо логи рівня INFO та вище
+
+    def emit(self, record: logging.LogRecord):
+        """
+        Надсилає відформатований запис логу в Telegram.
+        """
+        if not self.telegram_bot or not hasattr(self.telegram_bot, 'send_log_sync'):
+            return
+            
+        log_entry = self.format(record)
+        
+        # Використовуємо рівень логування для іконки
+        level_name = record.levelname
+        
+        # Надсилаємо повідомлення через синхронний метод бота
+        try:
+            # Перевіряємо, чи бот готовий до відправки
+            if self.telegram_bot.running:
+                self.telegram_bot.send_log_sync(log_entry, level=level_name)
+        except Exception:
+            # Уникаємо рекурсивних помилок, якщо сам бот не працює
+            self.handleError(record)
 
 def setup_logger() -> None:
     """
@@ -44,7 +79,15 @@ def setup_logger() -> None:
 
     # Приглушуємо «гучні» сторонні логери
     logging.getLogger("binance").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    logging.getLogger("httpx").setLevel(logging.ERROR)
+    logging.getLogger("telegram").setLevel(logging.ERROR)
+    logging.getLogger("httpcore").setLevel(logging.ERROR)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+    logging.getLogger("telegram.ext.Updater").setLevel(logging.CRITICAL)
+    logging.getLogger("telegram.ext.Application").setLevel(logging.ERROR)
+    logging.getLogger("requests").setLevel(logging.ERROR)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.CRITICAL)
 
     logging.info("=" * 50)
     logging.info("Логер успішно налаштовано. Нова сесія бота.")

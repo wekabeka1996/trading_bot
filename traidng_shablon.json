@@ -1,0 +1,110 @@
+{
+  "plan_date": "2025-08-06",
+  "plan_version": "1.0",
+  "plan_type": "futures_day_ensemble",
+  "plan_author": "LLM-Ensemble",
+  "risk_budget": 0.02,
+  "global_settings": {
+    "max_portfolio_risk": 0.04,
+    "emergency_stop_loss": -0.08,
+    "daily_profit_target": 0.05,
+    "max_concurrent_positions": 3,
+    "max_notional_per_trade": 25.0,
+    "margin_limit_pct": 0.40
+  },
+  "active_assets": [
+    {
+      "symbol": "ILVUSDT",
+      "asset_type": "futures",
+      "leverage": 5,
+      "strategy": "ilv_proleague_long",
+      "order_groups": {
+        "bullish": {
+          "order_type": "BUY_STOP_LIMIT",
+          "trigger_price": 21.0,
+          "limit_price": 21.1,
+          "stop_loss": 18.7,
+          "take_profit": [23.5, 26.0],
+          "time_valid_from": "2025-08-06T10:45:00+03:00",
+          "time_valid_to":   "2025-08-06T13:15:00+03:00"
+        }
+      },
+      "dynamic_management": {
+        "trailing_sl_atr_multiple": 1.5,
+        "atr_window_min": 15,
+        "activate_after_profit": 0.01
+      }
+    },
+    {
+      "symbol": "ARBUSDT",
+      "asset_type": "futures",
+      "leverage": 5,
+      "strategy": "arb_short_unlock_play",
+      "order_groups": {
+        "bearish": {
+          "order_type": "SELL_STOP_LIMIT",
+          "trigger_price": 0.39,
+          "limit_price": 0.389,
+          "stop_loss": 0.415,
+          "take_profit": [0.37, 0.35],
+          "time_valid_from": "2025-08-06T12:15:00+03:00",
+          "time_valid_to":   "2025-08-06T14:45:00+03:00"
+        }
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "asset_type": "futures",
+      "leverage": 5,
+      "strategy": "bnb_btc_spread_long",
+      "order_groups": {
+        "bullish": {
+          "order_type": "BUY_MARKET",
+          "trigger_price": 0.0,
+          "limit_price": 0.0,
+          "stop_loss": 0.0,
+          "take_profit": [0.0],
+          "time_valid_from": "2025-08-06T10:45:00+03:00",
+          "time_valid_to":   "2025-08-06T22:15:00+03:00"
+        }
+      },
+      "hedge": {
+        "symbol": "BTCUSDT",
+        "direction": "short",
+        "size_pct_of_position": 0.82,
+        "delta": 0.25
+      }
+    },
+    {
+      "symbol": "XRPUSDT",
+      "asset_type": "futures",
+      "leverage": 5,
+      "strategy": "xrp_event_call_alt",
+      "order_groups": {
+        "bullish": {
+          "order_type": "BUY_STOP_LIMIT",
+          "trigger_price": 3.05,
+          "limit_price": 3.06,
+          "stop_loss": 2.85,
+          "take_profit": [3.25, 3.30],
+          "time_valid_from": "2025-08-06T10:45:00+03:00",
+          "time_valid_to":   "2025-08-06T13:15:00+03:00"
+        }
+      }
+    }
+  ],
+  "trade_phases": {
+    "setup_orders": {"time": "10:40", "action": "place_all_orders", "description": "Виставити умовні ордери"},
+    "cancel_unfilled": {"time": "22:15", "action": "cancel_all_untriggered", "description": "Скасувати невиконані"},
+    "end_of_day_checklist": {"time": "00:10", "action": "end_of_day_checklist", "description": "Чек‑лист"}
+  },
+  "risk_triggers": {
+    "btc_flash_drop": {"threshold_pct": 3.0, "assets": ["BTCUSDT"], "action": "close_longs_keep_hedge"}
+  },
+  "end_of_day_checklist": [
+    "position_closed_or_sl_in_profit",
+    "log_journal_roi_pf_drawdown",
+    "archive_screens_volume_oi",
+    "update_equity_and_risk_budget"
+  ]
+}

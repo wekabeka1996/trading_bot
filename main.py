@@ -12,7 +12,10 @@ from trading_bot.exchange_connector import BinanceFuturesConnector
 from trading_bot.plan_parser import PlanParser
 from trading_bot.engine import Engine
 from trading_bot.notifications import TelegramNotifier
-from trading_bot.journal import TradingJournal  # <-- Імпортуємо Journal
+from trading_bot.journal import TradingJournal
+from trading_bot.telegram_bot import TradingTelegramBot
+from trading_bot.telegram_config import TelegramConfig
+from trading_bot.logger_config import TelegramLogHandler
 
 
 def main():
@@ -24,9 +27,17 @@ def main():
 
     # 2. Завантаження конфігурації з .env файлу
     load_dotenv()
-    api_key = os.getenv("BINANCE_API_KEY")
-    api_secret = os.getenv("BINANCE_SECRET")  # Виправлено назву змінної
     use_testnet = os.getenv("BINANCE_TESTNET", "false").lower() == "true"
+    
+    # Вибираємо правильні ключі залежно від режиму
+    if use_testnet:
+        api_key = os.getenv("BINANCE_TESTNET_API_KEY")
+        api_secret = os.getenv("BINANCE_TESTNET_SECRET")
+        logging.info("🧪 Використовується TESTNET режим")
+    else:
+        api_key = os.getenv("BINANCE_API_KEY")
+        api_secret = os.getenv("BINANCE_SECRET")
+        logging.warning("💰 Використовується MAINNET режим - РЕАЛЬНІ ГРОШІ!")
 
     tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
     tg_chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -58,7 +69,7 @@ def main():
 
     # 4. Ініціалізація основних компонентів
     try:
-        # Явно перетворюємо в рядки, щоб уникнути None
+        # Звичайний Telegram notifier
         notifier = TelegramNotifier(
             token=str(tg_token) if tg_token else "",
             chat_id=str(tg_chat_id) if tg_chat_id else ""
@@ -74,15 +85,41 @@ def main():
             notifier=notifier,
             journal=journal
         )
+        
+        # 5. Ініціалізація Telegram бота з командами
+        telegram_bot = None
+        if tg_token and tg_chat_id:
+            tg_config = TelegramConfig(
+                token=str(tg_token),
+                chat_id=str(tg_chat_id)
+            )
+            telegram_bot = TradingTelegramBot(
+                config=tg_config,
+                engine=engine
+            )
+            
+            # Додаємо обробник логів для трансляції в Telegram
+            telegram_handler = TelegramLogHandler(telegram_bot)
+            root_logger = logging.getLogger()
+            root_logger.addHandler(telegram_handler)
+            
+            # Запускаємо Telegram бота
+            telegram_bot.start_bot()
+            logging.info("Telegram бот з командами запущено")
+        
     except (ValueError, TypeError) as e:
         logging.critical(
             "Помилка ініціалізації компонентів: %s", e, exc_info=True
         )
-        notifier = None  # Визначаємо змінну для уникнення помилки
         return
 
-    # 5. Запуск бота
-    engine.run()
+    # 6. Запуск основного бота
+    try:
+        engine.run()
+    finally:
+        # Зупиняємо Telegram бота при завершенні
+        if telegram_bot:
+            telegram_bot.stop_bot()
 
 
 if __name__ == "__main__":

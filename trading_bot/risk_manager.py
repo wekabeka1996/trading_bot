@@ -141,9 +141,15 @@ class RiskManager:
         total_margin_limit_usd = self.equity * margin_limit_pct
 
         current_positions = self.exchange.get_position_information()
-        used_margin = sum(
-            float(p.get('initialMargin', '0')) for p in current_positions
-        )
+        try:
+            if not isinstance(current_positions, list):
+                used_margin = 0.0
+            else:
+                used_margin = sum(
+                    float(p.get('initialMargin', '0')) for p in current_positions
+                )
+        except Exception:
+            used_margin = 0.0
         available_margin = total_margin_limit_usd - used_margin
 
         if available_margin <= 0:
@@ -315,7 +321,7 @@ class RiskManager:
         else:
             self.logger.error("Невідома глобальна ризикова дія: %s", action)
 
-    def _close_all_positions(self, keep_hedge: bool = False, reason: str = None):
+    def _close_all_positions(self, keep_hedge: bool = False, reason: str | None = None):
         """Закриває всі відкриті позиції, опціонально зберігаючи хедж. reason — причина закриття (kill-switch)."""
         positions = self.exchange.get_position_information()
         if not positions:
@@ -387,3 +393,56 @@ class RiskManager:
             f"Позицію {symbol} зменшено на {percentage*100}%.",
             level="trade"
         )
+
+    def manual_close_position(self, symbol: str, percentage: float = 1.0) -> bool:
+        """Закриває позицію вручну через Telegram команду."""
+        positions = self.exchange.get_position_information(symbol)
+        position = next((p for p in positions if float(p['positionAmt']) != 0), None)
+        
+        if not position:
+            self.logger.warning(f"Позиція {symbol} не знайдена для закриття")
+            return False
+            
+        if percentage >= 1.0:
+            self._close_position(position)
+        else:
+            self._reduce_position(position, percentage)
+            
+        self.notifier.send_message(
+            f"✅ Позиція {symbol} {'закрита' if percentage >= 1.0 else f'уменьшена на {percentage*100:.0f}%'} вручну",
+            level="info"
+        )
+        return True
+    
+    def set_breakeven_sl(self, symbol: str) -> bool:
+        """Устанавливает Stop Loss на рівень безубитка."""
+        positions = self.exchange.get_position_information(symbol)
+        position = next((p for p in positions if float(p['positionAmt']) != 0), None)
+        
+        if not position:
+            return False
+            
+        entry_price = float(position['entryPrice'])
+        amount = float(position['positionAmt'])
+        side = "SELL" if amount > 0 else "BUY"
+        
+        # Добавляем небольшой буфер для покрытия комиссий
+        buffer = entry_price * 0.001  # 0.1%
+        sl_price = entry_price + buffer if amount < 0 else entry_price - buffer
+        
+        order = self.exchange.place_order(
+            symbol=symbol,
+            side=side,
+            order_type="STOP_MARKET",
+            quantity=abs(amount),
+            stopPrice=sl_price,
+            reduceOnly=True
+        )
+        
+        if order:
+            self.notifier.send_message(
+                f"✅ Stop Loss для {symbol} перемещен в безубыток на ${sl_price:.4f}",
+                level="info"
+            )
+            return True
+        return False

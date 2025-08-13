@@ -22,7 +22,9 @@ class GlobalSettings(BaseModel):
     emergency_stop_loss: float
     daily_profit_target: float
     max_concurrent_positions: int
-    max_notional_per_trade: float = 25.0
+    # За замовчуванням дуже великий ліміт, щоб не обмежувати за номіналом,
+    # якщо явно не задано у плані
+    max_notional_per_trade: float = 1_000_000.0
     margin_limit_pct: float = 0.40
 
 
